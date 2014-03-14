@@ -892,7 +892,7 @@ KdNewKeyboard (void)
         return NULL;
 
     ki->minScanCode = 0;
-    ki->maxScanCode = 0;
+    ki->maxScanCode = 255;     /* Works for WM8850 and maybe nowhere else */
     ki->leds = 0;
     ki->bellPitch = 1000;
     ki->bellDuration = 200;
