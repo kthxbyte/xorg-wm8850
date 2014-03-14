@@ -1,0 +1,153 @@
+Index: xorg-server-670016/hw/xfree86/common/xf86Xinput.c
+===================================================================
+--- xorg-server-670016.orig/hw/xfree86/common/xf86Xinput.c	2010-12-08 17:10:48.857373180 -0800
++++ xorg-server-670016/hw/xfree86/common/xf86Xinput.c	2010-12-08 17:49:26.426650900 -0800
+@@ -106,6 +106,15 @@
+ 
+ #include "os.h"
+ 
++#include "gestureproto.h"
++
++_X_EXPORT void
++xf86PostGestureEvent(DeviceIntPtr dev, unsigned short x, unsigned short y,
++                     unsigned short client_id, unsigned short gesture_id,
++                     unsigned short gesture_type, Window root, Window event,
++                     Window child, unsigned short status,
++                     unsigned short num_props, float *props);
++
+ EventListPtr xf86Events = NULL;
+ 
+ /**
+@@ -976,6 +985,40 @@
+  */
+ 
+ void
++xf86PostGestureEvent(DeviceIntPtr dev, unsigned short x, unsigned short y,
++                     unsigned short client_id, unsigned short gesture_id,
++                     unsigned short gesture_type, Window root, Window event,
++                     Window child, unsigned short status,
++                     unsigned short num_props, float *props)
++{
++    DeviceEvent *ev = (DeviceEvent *)xf86Events->event;
++
++    if (num_props > MAX_GESTURE_PROPS)
++        num_props = MAX_GESTURE_PROPS;
++
++    memset(ev, 0, sizeof(DeviceEvent));
++    ev->header = ET_Internal;
++    ev->length = sizeof(DeviceEvent);
++    ev->time = GetTimeInMillis();
++    ev->deviceid = dev->id;
++    ev->sourceid = dev->id;
++    ev->type = ET_Gesture;
++    ev->root_x = x;
++    ev->root_y = y;
++    ev->gesture.client_id = client_id;
++    ev->gesture.id = gesture_id;
++    ev->gesture.type = gesture_type;
++    ev->root = root;
++    ev->gesture.event = event;
++    ev->gesture.child = child;
++    ev->gesture.status = status;
++    ev->gesture.num_props = num_props;
++    memcpy(ev->gesture.props, props, num_props * sizeof(float));
++
++    mieqEnqueue(dev, (InternalEvent*)ev);
++}
++
++void
+ xf86PostMotionEvent(DeviceIntPtr	device,
+                     int			is_absolute,
+                     int			first_valuator,
+Index: xorg-server-670016/include/eventstr.h
+===================================================================
+--- xorg-server-670016.orig/include/eventstr.h	2010-12-08 17:09:54.601331000 -0800
++++ xorg-server-670016/include/eventstr.h	2010-12-08 17:10:49.153375094 -0800
+@@ -65,6 +65,7 @@
+     ET_RawButtonRelease,
+     ET_RawMotion,
+     ET_XQuartz,
++    ET_Gesture,
+     ET_Internal = 0xFF /* First byte */
+ };
+ 
+@@ -72,6 +73,9 @@
+                           FatalError("Wrong event type %d.\n", \
+                                      ((InternalEvent*)(ev))->any.header);
+ 
++/* Should match DIM_GRAIL_PROP in grail.h */
++#define MAX_GESTURE_PROPS 32
++
+ /**
+  * Used for ALL input device events internal in the server until
+  * copied into the matching protocol event.
+@@ -114,6 +118,16 @@
+         uint8_t locked;  /**< XKB locked group */
+         uint8_t effective;/**< XKB effective group */
+     } group;
++    struct {
++        uint16_t client_id;
++        uint16_t id;
++        uint16_t type;
++        Window event;
++        Window child;
++        uint16_t status;
++        uint16_t num_props;
++        float props[MAX_GESTURE_PROPS];
++    } gesture;
+     Window      root; /**< Root window of the event */
+     int corestate;    /**< Core key/button state BEFORE the event */
+     int key_repeat;   /**< Internally-generated key repeat event */
+Index: xorg-server-670016/mi/mieq.c
+===================================================================
+--- xorg-server-670016.orig/mi/mieq.c	2010-12-08 17:09:54.601331000 -0800
++++ xorg-server-670016/mi/mieq.c	2010-12-08 17:10:49.157375120 -0800
+@@ -58,6 +58,8 @@
+ # include <X11/extensions/dpmsconst.h>
+ #endif
+ 
++#include "gestureproto.h"
++
+ #define QUEUE_SIZE  512
+ 
+ #define EnqueueScreen(dev) dev->spriteInfo->sprite->pEnqueueScreen
+@@ -370,6 +372,39 @@
+ 
+     CHECKEVENT(event);
+ 
++    if (event->any.header == ET_Internal && event->any.type == ET_Gesture){
++        GestureEvent gev;
++        DeviceEvent *ev = (DeviceEvent *)event;
++        ClientPtr client = clients[ev->gesture.client_id];
++
++        /* Check if client still exists */
++        if (!client)
++            return;
++
++        gev.type = GenericEvent;
++        gev.extension =  GestureReqCode;
++        gev.sequenceNumber = client->sequence;
++        gev.evtype = 0;
++        gev.time = ev->time;
++        gev.length = (sizeof(GestureEvent) +
++                      ev->gesture.num_props * sizeof(float) -
++                       sizeof(xEvent)) / 4;
++        gev.gesture_id = ev->gesture.id;
++        gev.gesture_type = ev->gesture.type;
++        gev.device_id = ev->deviceid;
++        gev.root = ev->root;
++        gev.event = ev->gesture.event;
++        gev.child = ev->gesture.child;
++        gev.focus_x = ev->root_x;
++        gev.focus_y = ev->root_y;
++        gev.status = ev->gesture.status;
++        gev.num_props = ev->gesture.num_props;
++
++        WriteToClient(client, sizeof(GestureEvent), &gev);
++        WriteToClient(client, sizeof(float) * gev.num_props, ev->gesture.props);
++        return;
++    }
++
+     /* Custom event handler */
+     handler = miEventQueue.handlers[event->any.type];
+ 

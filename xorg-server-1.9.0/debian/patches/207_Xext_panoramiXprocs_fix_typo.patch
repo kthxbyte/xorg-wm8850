@@ -1,0 +1,33 @@
+From 78f94f19aab66a1e5331df0ce29f36e310b4195d Mon Sep 17 00:00:00 2001
+From: Linus Arver <linusarver@gmail.com>
+Date: Sun, 17 Oct 2010 19:26:01 +0000
+Subject: Xext: panoramiXprocs: fix typo
+
+This fixes a typo introduced in commit
+80b5d3a3264d2c5167e5ac85a3b04af0f89cece1. The pointer pDst was changed
+unintentionally to pWin from a copy/paste error. This resulted in all
+QT-based apps and some tcl/tk ones (like fontforge) to crash X 1.9 on
+starting up, when Xinerama was enabled.
+
+Bug report: https://bbs.archlinux.org/viewtopic.php?id=106125
+
+Signed-off-by: Elie Bleton <drozofil@gmail.com>
+Reviewed-by: Adam Jackson <ajax@redhat.com>
+Reviewed-by: Matt Turner <mattst88@gmail.com>
+Tested-by: Linus Arver <linusarver@gmail.com>
+---
+diff --git a/Xext/panoramiXprocs.c b/Xext/panoramiXprocs.c
+index 67b4030..d843168 100644
+--- a/Xext/panoramiXprocs.c
++++ b/Xext/panoramiXprocs.c
+@@ -634,7 +634,7 @@ int PanoramiXTranslateCoords(ClientPtr client)
+     rep.dstX = x - pDst->drawable.x;
+     rep.dstY = y - pDst->drawable.y;
+     if((pDst == screenInfo.screens[0]->root) ||
+-       (pWin->drawable.id == screenInfo.screens[0]->screensaver.wid))
++       (pDst->drawable.id == screenInfo.screens[0]->screensaver.wid))
+     {
+ 	rep.dstX += screenInfo.screens[0]->x;
+ 	rep.dstY += screenInfo.screens[0]->y;
+--
+cgit v0.8.3-6-g21f6
