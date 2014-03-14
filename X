@@ -1,0 +1,3 @@
+#!/bin/sh
+/usr/bin/Xfbdev-wm8850 -mouse mouse -keybd keyboard $1 $2 $3 $4 $5 $6
+
